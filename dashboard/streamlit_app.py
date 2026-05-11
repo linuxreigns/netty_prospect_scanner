@@ -251,9 +251,9 @@ else:
 
 sqe1, sqe2 = st.columns(2)
 sq_export_params = {"limit": int(sq_limit), "min_score": int(sq_min_score), "stale_hours": int(sq_stale)}
-if sqe1.button("Exportar CSV"):
+if sqe1.button("Exportar CSV", key="sq_export_csv"):
     st.write(requests.get(f"{API_BASE}/export/sales-queue-csv", params=sq_export_params, timeout=30).json())
-if sqe2.button("Exportar XLSX"):
+if sqe2.button("Exportar XLSX", key="sq_export_xlsx"):
     st.write(requests.get(f"{API_BASE}/export/sales-queue-xlsx", params=sq_export_params, timeout=30).json())
 
 # ── 10. Ranking prospectos ─────────────────────────────────────────────────────
@@ -335,9 +335,9 @@ with st.expander("Pipeline comercial (discover → scan → export)"):
 st.divider()
 st.subheader("Exportaciones")
 col1, col2, col3 = st.columns(3)
-if col1.button("Exportar CSV"):
+if col1.button("Exportar CSV", key="export_csv_all"):
     st.write(requests.get(f"{API_BASE}/export/csv", timeout=30).json())
-if col2.button("Exportar XLSX"):
+if col2.button("Exportar XLSX", key="export_xlsx_all"):
     st.write(requests.get(f"{API_BASE}/export/xlsx", timeout=30).json())
 if col3.button("Exportar PDF resumen"):
     st.write(requests.get(f"{API_BASE}/export/pdf-summary", timeout=30).json())
