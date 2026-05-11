@@ -56,16 +56,24 @@ jobs:
       - name: Diagnose environment
         run: |
           python --version
-          pip show fastapi starlette pytest httpx 2>/dev/null | grep -E "^(Name|Version):"
+          python -c "import sys; print('sys.executable:', sys.executable)"
+          python -c "import pytest; print('pytest from:', pytest.__file__, 'version:', pytest.__version__)"
+          python -c "import fastapi; print('fastapi:', fastapi.__version__)"
           echo "CWD: $(pwd)"
           ls -la data/
+
+      - name: Collect tests (dry run)
+        env:
+          ENABLE_PLAYWRIGHT_FALLBACK: "false"
+        run: |
+          python -m pytest --collect-only -q 2>&1
 
       - name: Tests
         env:
           ENABLE_PLAYWRIGHT_FALLBACK: "false"
         run: |
-          pytest -v --tb=long -p no:warnings 2>&1 | tee /tmp/pytest_output.txt
-          exit ${PIPESTATUS[0]}
+          set -o pipefail
+          python -m pytest -v --tb=long 2>&1 | tee /tmp/pytest_output.txt
 
       - name: Upload test results
         if: always()
