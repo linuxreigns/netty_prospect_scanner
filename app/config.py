@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     ai_model: str | None = None
     ai_base_url: str | None = None  # OpenAI compatible endpoint
 
+    # Discovery autónomo via DuckDuckGo
+    enable_duckduckgo_discovery: bool = False
+    duckduckgo_results_per_query: int = 10
+
     # Cola comercial desacoplada (Etapa 4)
     redis_url: str | None = None
 

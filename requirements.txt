@@ -17,5 +17,6 @@ ruff==0.15.12
 black==26.3.1
 isort==8.0.1
 pre-commit==4.6.0
+ddgs==9.14.2
 psycopg2-binary==2.9.12
 redis[hiredis]==7.4.0
