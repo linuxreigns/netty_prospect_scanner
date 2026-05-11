@@ -1,0 +1,14 @@
+[Unit]
+Description=Netty Sales Engine Monitor Loop
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/netty-prospect-scanner
+Environment=INTERVAL_SECONDS=60
+ExecStart=/bin/bash -lc './scripts/monitor_loop.sh'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

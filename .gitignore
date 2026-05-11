@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# OS / Editor
+.DS_Store
+.vscode/
+.idea/
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Local DB and runtime data
+data/netty_scanner.db
+
+# Exports (keep folder, ignore generated files)
+data/exports/*
+!data/exports/.gitkeep
+
+# Playwright browsers cache (optional local)
+ms-playwright/
+
+# Logs
+*.log

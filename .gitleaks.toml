@@ -1,0 +1,15 @@
+title = "Netty Prospect Scanner Gitleaks Config"
+
+[allowlist]
+description = "Allow false positives and template placeholders"
+paths = [
+  '''(^|/)\.env\.example$''',
+  '''(^|/)README\.md$''',
+  '''(^|/)CHANGELOG\.md$''',
+]
+regexes = [
+  '''tu_api_key_openai''',
+  '''tu_api_key_deepseek''',
+  '''AI_API_KEY=\s*$''',
+  '''OWNER/REPO''',
+]
