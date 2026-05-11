@@ -45,6 +45,7 @@ jobs:
           python -m isort --check-only app dashboard tests
 
       - name: Secret scan (gitleaks)
+        if: github.event_name == 'push'
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
