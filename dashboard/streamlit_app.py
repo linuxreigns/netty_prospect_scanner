@@ -2,9 +2,23 @@ import pandas as pd
 import requests
 import streamlit as st
 
-API_BASE = st.sidebar.text_input("API Base URL", value="http://localhost:8000")
+st.set_page_config(
+    page_title="Netty Sales Engine",
+    page_icon="🤖",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
-st.title("Netty Prospect Scanner Dashboard")
+API_BASE = st.sidebar.text_input("API Base URL", value="http://localhost:8000")
+st.sidebar.markdown("---")
+st.sidebar.caption("🤖 Netty Sales Engine — Centro Operativo IA")
+st.sidebar.caption("Descubrimiento · Auditoría · Propuesta · CRM")
+
+st.title("Netty Sales Engine")
+st.caption(
+    "Centro Operativo IA · Cada prospecto fue descubierto, analizado, auditado y clasificado "
+    "automáticamente por el ecosistema que impulsa Netty."
+)
 
 if st.button("Refrescar resumen"):
     st.rerun()
@@ -26,6 +40,19 @@ except Exception as exc:
     st.error(f"No se pudo conectar con la API: {exc}")
     st.stop()
 
+st.divider()
+
+# Pipeline del ecosistema: descubrir → analizar → calificar → proponer → CRM
+eco1, eco2, eco3, eco4, eco5 = st.columns(5)
+eco1.metric("🔍 Descubiertos", summary.get("total_sites", 0), help="Prospectos descubiertos automáticamente")
+eco2.metric("🤖 Auditados", funnel.get("with_agent_run", 0), help="Analizados por cadena de 10 agentes")
+eco3.metric("🔥 HOT leads", funnel.get("hot", 0), help="Score ≥ 80 — listos para contacto")
+eco4.metric("📋 En cola CRM", queue_metrics.get("total_items", 0), help="Propuestas listas para aprobación")
+eco5.metric("Sin chatbot", summary.get("without_chatbot", 0), help="Oportunidad directa para Netty")
+
+st.divider()
+
+st.subheader("Señales comerciales")
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Total sitios", summary.get("total_sites", 0))
 c2.metric("Sin chatbot", summary.get("without_chatbot", 0))
