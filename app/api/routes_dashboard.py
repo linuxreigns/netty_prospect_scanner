@@ -1,5 +1,5 @@
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func
@@ -89,7 +89,7 @@ def list_prospects(
     rows = []
     cutoff = None
     if sin_run_reciente_horas is not None and sin_run_reciente_horas > 0:
-        cutoff = datetime.now(UTC) - timedelta(hours=sin_run_reciente_horas)
+        cutoff = datetime.utcnow() - timedelta(hours=sin_run_reciente_horas)
 
     for p in prospects:
         latest_run = _latest_agent_run(db, p.domain)
@@ -246,7 +246,7 @@ def agents_summary(db: Session = Depends(get_db)):
 
 @router.get("/sales-queue")
 def sales_queue(limit: int = 50, min_score: int = 60, stale_hours: int = 24, db: Session = Depends(get_db)):
-    cutoff = datetime.now(UTC) - timedelta(hours=max(1, stale_hours))
+    cutoff = datetime.utcnow() - timedelta(hours=max(1, stale_hours))
 
     prospects = (
         db.query(Prospect)
@@ -378,7 +378,7 @@ def funnel(db: Session = Depends(get_db)):
 
 @router.get("/pipeline-aging")
 def pipeline_aging(hours_threshold: int = 24, db: Session = Depends(get_db)):
-    cutoff = datetime.now(UTC) - timedelta(hours=max(1, min(hours_threshold, 720)))
+    cutoff = datetime.utcnow() - timedelta(hours=max(1, min(hours_threshold, 720)))
     prospects = db.query(Prospect).filter(Prospect.load_ok.is_(True)).all()
 
     aging_buckets = {
@@ -431,7 +431,7 @@ def hot_alerts(limit: int = 20, stale_hours: int = 24, db: Session = Depends(get
     queue = sales_queue(limit=max(1, min(limit, 200)), min_score=80, stale_hours=stale_hours, db=db)
     items = queue.get("items", [])
 
-    now = datetime.now(UTC)
+    now = datetime.utcnow()
     alerts = []
     for item in items:
         latest_at = item.get("latest_agent_run_at")
@@ -492,7 +492,7 @@ def hot_alerts(limit: int = 20, stale_hours: int = 24, db: Session = Depends(get
 
 @router.get("/commercial/queue-metrics")
 def commercial_queue_metrics(hours_threshold: int = 24, db: Session = Depends(get_db)):
-    now = datetime.now(UTC)
+    now = datetime.utcnow()
     cutoff = now - timedelta(hours=max(1, min(hours_threshold, 720)))
 
     pending = db.query(CommercialQueueItem).filter(CommercialQueueItem.status == "pending").all()
@@ -545,7 +545,7 @@ def commercial_queue_metrics(hours_threshold: int = 24, db: Session = Depends(ge
 @router.get("/agents/activity")
 def agents_activity(days: int = 7, db: Session = Depends(get_db)):
     days = max(1, min(days, 90))
-    now = datetime.now(UTC)
+    now = datetime.utcnow()
     since = now - timedelta(days=days)
 
     runs = db.query(AgentRun).filter(AgentRun.created_at >= since).order_by(AgentRun.created_at.asc()).all()
