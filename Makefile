@@ -1,4 +1,4 @@
-.PHONY: install test lint format check precommit run-api run-dashboard compose-up compose-down migrate-up migrate-down backup-data verify-restore monitor-check monitor-loop smoke-post-restart
+.PHONY: install test lint format check precommit run-api run-dashboard compose-up compose-down migrate-up migrate-down backup-data verify-restore monitor-check monitor-loop smoke-post-restart setup-branch-protection
 
 PYTHON := ./venv/bin/python
 PIP := ./venv/bin/pip
@@ -65,3 +65,6 @@ monitor-loop:
 
 smoke-post-restart:
 	./scripts/smoke_post_restart.sh
+
+setup-branch-protection:
+	./scripts/setup_branch_protection.sh
