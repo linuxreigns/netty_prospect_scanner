@@ -1,3 +1,4 @@
+from app.ai.commercial_analysis import generate_outreach_with_ai, generate_proposal_with_ai
 from app.scoring.score_engine import compute_score
 
 from .base import BaseAgent
@@ -160,43 +161,71 @@ class ProposalGeneratorAgent(BaseAgent):
     name = "Proposal Generator Agent"
 
     def run(self, ctx: ProspectContext) -> ProspectContext:
-        # Datos específicos del prospecto para personalizar la propuesta
         cms = ctx.analysis.get("cms") or "no detectado"
         ecommerce = ctx.analysis.get("ecommerce_platform") or "ninguno"
         opps = ctx.analysis.get("audit_opportunities") or []
         plan = "Business" if ctx.score >= 80 else "Pro" if ctx.score >= 60 else "Starter"
         rubro_str = ctx.rubro or "su sector"
 
-        tech_line = f"Stack detectado: {cms}" + (f" + {ecommerce}" if ecommerce != "ninguno" else "")
-        opps_text = "; ".join(opps) if opps else "múltiples oportunidades de automatización"
-
-        audit_summary = (
-            f"NETTY SALES ENGINE descubrió, visitó y auditó {ctx.domain} de forma completamente autónoma. "
-            f"Clasificación: {ctx.classification} ({ctx.score}/100). "
-            f"{tech_line}. "
-            f"Oportunidades detectadas: {opps_text}."
-        )
-        pitch = (
-            f"Netty puede transformar {rubro_str} como {ctx.domain}: "
-            f"atención automática 24/7, captura de leads, seguimiento IA y ventas sin fricción. "
-            f"Plan recomendado: {plan}."
-        )
-
-        proposal = {
-            "audit_summary": audit_summary,
-            "tech_detected": {"cms": cms, "ecommerce": ecommerce},
+        ctx_dict = {
+            "domain": ctx.domain,
+            "rubro": ctx.rubro,
+            "cms": cms,
+            "ecommerce": ecommerce,
+            "score": ctx.score,
+            "classification": ctx.classification,
+            "has_chatbot": ctx.analysis.get("has_chatbot", False),
+            "has_whatsapp": ctx.analysis.get("has_whatsapp", False),
+            "has_ecommerce": bool(ctx.analysis.get("has_products_or_cart")),
             "opportunities": opps,
-            "value_points": ctx.recommendations,
-            "plan_recommendation": plan,
-            "pitch": pitch,
-            "meta_note": "Esta propuesta fue generada automáticamente por el ecosistema Netty Sales Engine — el mismo sistema que Netty utiliza para sus clientes.",
+            "recommendations": ctx.recommendations,
         }
+        ai_result = generate_proposal_with_ai(ctx_dict)
+
+        if ai_result:
+            proposal = {
+                "audit_summary": ai_result.get("audit_summary", ""),
+                "value_proposition": ai_result.get("value_proposition", ""),
+                "tech_detected": {"cms": cms, "ecommerce": ecommerce},
+                "opportunities": opps,
+                "value_points": ctx.recommendations,
+                "plan_recommendation": ai_result.get("plan_recommendation", plan),
+                "plan_justification": ai_result.get("plan_justification", ""),
+                "pitch": ai_result.get("pitch", ""),
+                "meta_note": ai_result.get("meta_note", ""),
+                "ai_generated": True,
+            }
+        else:
+            tech_line = f"Stack detectado: {cms}" + (f" + {ecommerce}" if ecommerce != "ninguno" else "")
+            opps_text = "; ".join(opps) if opps else "múltiples oportunidades de automatización"
+            audit_summary = (
+                f"NETTY SALES ENGINE descubrió, visitó y auditó {ctx.domain} de forma completamente autónoma. "
+                f"Clasificación: {ctx.classification} ({ctx.score}/100). "
+                f"{tech_line}. "
+                f"Oportunidades detectadas: {opps_text}."
+            )
+            pitch = (
+                f"Netty puede transformar {rubro_str} como {ctx.domain}: "
+                f"atención automática 24/7, captura de leads, seguimiento IA y ventas sin fricción. "
+                f"Plan recomendado: {plan}."
+            )
+            proposal = {
+                "audit_summary": audit_summary,
+                "tech_detected": {"cms": cms, "ecommerce": ecommerce},
+                "opportunities": opps,
+                "value_points": ctx.recommendations,
+                "plan_recommendation": plan,
+                "pitch": pitch,
+                "meta_note": "Esta propuesta fue generada automáticamente por el ecosistema Netty Sales Engine — el mismo sistema que Netty utiliza para sus clientes.",
+                "ai_generated": False,
+            }
+
         ctx.proposal = proposal
         ctx.add_trace(
             AgentTrace(
                 agent_name=self.name,
                 status="done",
-                summary=f"Propuesta personalizada generada para {ctx.domain} (plan {plan}).",
+                summary=f"Propuesta generada para {ctx.domain} (plan {proposal['plan_recommendation']}, IA={'sí' if ai_result else 'no'}).",
                 output=proposal,
             )
         )
@@ -212,34 +241,57 @@ class OutreachAgent(BaseAgent):
         cms = ctx.analysis.get("cms") or "su plataforma web"
         rubro_str = ctx.rubro or "su negocio"
 
-        first_msg = (
-            f"Hola, te escribo desde Netty. "
-            f"Nuestro ecosistema IA descubrió y analizó {ctx.domain} automáticamente. "
-            f"Detectamos: {top_opp}. "
-            f"¿Te comparto la auditoría completa? Es gratis y específica para {rubro_str}."
-        )
-        email = (
-            f"Asunto: Auditoría automática de {ctx.domain} — {ctx.classification} ({ctx.score}/100)\n\n"
-            f"Hola,\n\n"
-            f"El ecosistema NETTY SALES ENGINE identificó, visitó y auditó {ctx.domain} de forma autónoma.\n\n"
-            f"Hallazgos principales:\n"
-            + "".join(f"  • {o}\n" for o in (opps or ["Oportunidades de automatización detectadas"]))
-            + f"\nTecnología detectada: {cms}.\n"
-            f"Score Netty Fit: {ctx.score}/100 — clasificado como {ctx.classification}.\n\n"
-            f"Este análisis fue realizado automáticamente por el mismo motor IA que impulsa Netty.\n"
-            f"¿Le mostramos cómo Netty puede cubrir estas brechas en {rubro_str}?"
-        )
-        ctx.outreach = {
-            "whatsapp_draft": first_msg,
-            "email_draft": email,
-            "send_mode": "manual_approval_required",
-            "personalization": {"domain": ctx.domain, "score": ctx.score, "top_opportunity": top_opp},
+        ctx_dict = {
+            "domain": ctx.domain,
+            "rubro": ctx.rubro,
+            "cms": cms,
+            "score": ctx.score,
+            "classification": ctx.classification,
+            "has_chatbot": ctx.analysis.get("has_chatbot", False),
+            "opportunities": opps,
         }
+        ai_result = generate_outreach_with_ai(ctx_dict)
+
+        if ai_result:
+            ctx.outreach = {
+                "whatsapp_draft": ai_result.get("whatsapp_draft", ""),
+                "email_subject": ai_result.get("email_subject", ""),
+                "email_draft": ai_result.get("email_body", ""),
+                "send_mode": "manual_approval_required",
+                "personalization": {"domain": ctx.domain, "score": ctx.score, "top_opportunity": top_opp},
+                "ai_generated": True,
+            }
+        else:
+            first_msg = (
+                f"Hola, te escribo desde Netty. "
+                f"Nuestro ecosistema IA descubrió y analizó {ctx.domain} automáticamente. "
+                f"Detectamos: {top_opp}. "
+                f"¿Te comparto la auditoría completa? Es gratis y específica para {rubro_str}."
+            )
+            email = (
+                f"Asunto: Auditoría automática de {ctx.domain} — {ctx.classification} ({ctx.score}/100)\n\n"
+                f"Hola,\n\n"
+                f"El ecosistema NETTY SALES ENGINE identificó, visitó y auditó {ctx.domain} de forma autónoma.\n\n"
+                f"Hallazgos principales:\n"
+                + "".join(f"  • {o}\n" for o in (opps or ["Oportunidades de automatización detectadas"]))
+                + f"\nTecnología detectada: {cms}.\n"
+                f"Score Netty Fit: {ctx.score}/100 — clasificado como {ctx.classification}.\n\n"
+                f"Este análisis fue realizado automáticamente por el mismo motor IA que impulsa Netty.\n"
+                f"¿Le mostramos cómo Netty puede cubrir estas brechas en {rubro_str}?"
+            )
+            ctx.outreach = {
+                "whatsapp_draft": first_msg,
+                "email_draft": email,
+                "send_mode": "manual_approval_required",
+                "personalization": {"domain": ctx.domain, "score": ctx.score, "top_opportunity": top_opp},
+                "ai_generated": False,
+            }
+
         ctx.add_trace(
             AgentTrace(
                 agent_name=self.name,
                 status="done",
-                summary=f"Outreach personalizado con datos reales de auditoría ({len(opps)} oportunidades).",
+                summary=f"Outreach generado para {ctx.domain} ({len(opps)} oportunidades, IA={'sí' if ai_result else 'no'}).",
                 output=ctx.outreach,
             )
         )
