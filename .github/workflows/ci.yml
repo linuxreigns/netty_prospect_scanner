@@ -46,5 +46,7 @@ jobs:
           python -m compileall app dashboard tests
 
       - name: Tests
+        env:
+          ENABLE_PLAYWRIGHT_FALLBACK: "false"
         run: |
-          pytest
+          pytest -v --tb=short
