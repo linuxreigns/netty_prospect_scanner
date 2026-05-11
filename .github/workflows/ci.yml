@@ -24,6 +24,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Prepare data directories
+        run: |
+          mkdir -p data/exports data/backups
+
       - name: Lint (ruff)
         run: |
           ruff check app dashboard tests
@@ -45,8 +49,12 @@ jobs:
         run: |
           python -m compileall app dashboard tests
 
+      - name: Verify app imports
+        run: |
+          python -c "from app.main import app; print('app import OK')"
+
       - name: Tests
         env:
           ENABLE_PLAYWRIGHT_FALLBACK: "false"
         run: |
-          pytest -v --tb=short
+          pytest -v --tb=long
