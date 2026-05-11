@@ -83,24 +83,56 @@ class WebsiteAuditAgent(BaseAgent):
     name = "Website Audit Agent"
 
     def run(self, ctx: ProspectContext) -> ProspectContext:
+        a = ctx.analysis
         opps = []
-        if not ctx.analysis.get("has_chatbot"):
-            opps.append("No tiene chatbot visible")
-        if ctx.analysis.get("has_whatsapp"):
-            opps.append("Depende de WhatsApp manual")
-        if ctx.analysis.get("has_contact_form"):
-            opps.append("Tiene formulario: oportunidad de captura automática")
-        if ctx.analysis.get("has_products_or_cart"):
-            opps.append("Tiene eCommerce: oportunidad de ventas 24/7")
-        if not ctx.analysis.get("has_clear_cta"):
-            opps.append("CTA débil o no evidente")
+
+        # Chatbot / atención
+        if not a.get("has_chatbot"):
+            opps.append("No tiene chatbot visible — atención 24/7 manual")
+        if a.get("has_whatsapp"):
+            opps.append("Depende de WhatsApp manual — sin automatización")
+
+        # Formularios y CRM
+        if a.get("has_contact_form") and not a.get("has_crm_form"):
+            opps.append("Formulario sin CRM integrado — leads sin captura automática")
+        elif a.get("has_contact_form") and a.get("has_crm_form"):
+            opps.append(
+                f"CRM parcial ({a.get('crm_form_vendor', 'detectado')}) — integración Netty amplía automatización"
+            )
+
+        # eCommerce
+        if a.get("has_products_or_cart"):
+            opps.append("Tiene eCommerce — oportunidad de asistente de ventas 24/7")
+
+        # CTA
+        if not a.get("has_clear_cta"):
+            opps.append("CTA débil o no evidente — baja conversión")
+
+        # SEO
+        if not a.get("meta_description") or (a.get("meta_desc_length", 0) < 50):
+            opps.append("Sin meta descripción SEO — visibilidad en Google subóptima")
+        if not a.get("has_h1"):
+            opps.append("Sin H1 — estructura de página débil para SEO")
+        if not a.get("has_og_tags"):
+            opps.append("Sin Open Graph — vistas en redes sociales sin optimizar")
+
+        # Velocidad
+        speed = a.get("load_speed_tier", "ok")
+        if speed == "slow":
+            opps.append("Carga lenta (2.5–5 s) — afecta conversión y SEO")
+        elif speed == "very_slow":
+            opps.append("Carga muy lenta (>5 s) — abandono alto de usuarios")
+
+        # Redes sociales
+        if a.get("social_count", 0) == 0:
+            opps.append("Sin redes sociales detectadas — alcance orgánico limitado")
 
         ctx.analysis["audit_opportunities"] = opps
         ctx.add_trace(
             AgentTrace(
                 agent_name=self.name,
                 status="done",
-                summary=f"Audit detectó {len(opps)} oportunidades.",
+                summary=f"Audit detectó {len(opps)} oportunidades (SEO, velocidad, CRM, redes).",
                 output={"opportunities": opps},
             )
         )

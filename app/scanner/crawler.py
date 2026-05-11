@@ -227,6 +227,16 @@ async def scan_one(item: ScanInput, semaphore: asyncio.Semaphore) -> dict:
         tech = detect_technology(html=html, headers=fetched.get("headers", {}), cookies=fetched.get("cookies", ""))
         sig = detect_signals(url=url, html=html)
 
+        elapsed_ms = fetched.get("elapsed_ms") or 0
+        if elapsed_ms < 1000:
+            speed_tier = "fast"
+        elif elapsed_ms < 2500:
+            speed_tier = "ok"
+        elif elapsed_ms < 5000:
+            speed_tier = "slow"
+        else:
+            speed_tier = "very_slow"
+
         data = {
             "url": url,
             "domain": domain,
@@ -234,7 +244,8 @@ async def scan_one(item: ScanInput, semaphore: asyncio.Semaphore) -> dict:
             "provincia": item.provincia,
             "load_ok": True,
             "http_code": fetched.get("status"),
-            "response_time_ms": fetched.get("elapsed_ms"),
+            "response_time_ms": elapsed_ms,
+            "load_speed_tier": speed_tier,
             "ssl_enabled": ssl_enabled,
             **tech,
             **sig,

@@ -6,10 +6,12 @@ from .fingerprints import (
     CHATBOT_FINGERPRINTS,
     CMS_FINGERPRINTS,
     CONTACT_KEYWORDS,
+    CRM_FORM_FINGERPRINTS,
     CTA_KEYWORDS,
     ECOMMERCE_FINGERPRINTS,
     ECOMMERCE_HINTS,
     FRONTEND_FINGERPRINTS,
+    SOCIAL_PATTERNS,
     WHATSAPP_PATTERNS,
 )
 
@@ -70,8 +72,9 @@ def detect_signals(url: str, html: str) -> dict:
     has_email = bool(email_regex.search(html or ""))
     has_phone = bool(phone_regex.search(text))
 
-    has_facebook = "facebook.com" in (html or "").lower()
-    has_instagram = "instagram.com" in (html or "").lower()
+    html_lower = (html or "").lower()
+    has_facebook = "facebook.com" in html_lower
+    has_instagram = "instagram.com" in html_lower
 
     has_contact_page = any(any(k in (lnk or "").lower() for k in CONTACT_KEYWORDS) for lnk in links)
     has_products_or_cart = _contains_any(text, ECOMMERCE_HINTS) or _contains_any(
@@ -83,11 +86,38 @@ def detect_signals(url: str, html: str) -> dict:
 
     chatbot_vendor = None
     has_chatbot = False
-    script_blob = f"{html}\n{scripts_text}".lower()
+    script_blob = f"{html_lower}\n{scripts_text.lower()}"
     for vendor, patterns in CHATBOT_FINGERPRINTS.items():
         if _contains_any(script_blob, patterns):
             chatbot_vendor = vendor
             has_chatbot = True
+            break
+
+    # SEO signals
+    title_length = len(title) if title else 0
+    meta_desc_length = len(meta_description) if meta_description else 0
+    h1_tags = soup.find_all("h1")
+    has_h1 = len(h1_tags) > 0
+    has_og_tags = bool(soup.find("meta", property=re.compile(r"^og:")))
+    has_schema_markup = '"@context"' in (html or "") and "schema.org" in html_lower
+
+    # Additional social networks
+    social_hits: dict[str, bool] = {}
+    for net, patterns in SOCIAL_PATTERNS.items():
+        social_hits[net] = any(p in html_lower for p in patterns)
+    has_tiktok = social_hits.get("tiktok", False)
+    has_youtube = social_hits.get("youtube", False)
+    has_linkedin = social_hits.get("linkedin", False)
+    has_twitter = social_hits.get("twitter", False)
+    social_count = sum([has_facebook, has_instagram, has_tiktok, has_youtube, has_linkedin, has_twitter])
+
+    # CRM-integrated forms
+    crm_form_vendor = None
+    has_crm_form = False
+    for vendor, patterns in CRM_FORM_FINGERPRINTS.items():
+        if _contains_any(html_lower, patterns):
+            crm_form_vendor = vendor
+            has_crm_form = True
             break
 
     return {
@@ -105,4 +135,19 @@ def detect_signals(url: str, html: str) -> dict:
         "has_products_or_cart": has_products_or_cart,
         "looks_outdated": looks_outdated,
         "has_clear_cta": has_clear_cta,
+        # SEO
+        "title_length": title_length,
+        "meta_desc_length": meta_desc_length,
+        "has_h1": has_h1,
+        "has_og_tags": has_og_tags,
+        "has_schema_markup": has_schema_markup,
+        # Social
+        "has_tiktok": has_tiktok,
+        "has_youtube": has_youtube,
+        "has_linkedin": has_linkedin,
+        "has_twitter": has_twitter,
+        "social_count": social_count,
+        # CRM forms
+        "has_crm_form": has_crm_form,
+        "crm_form_vendor": crm_form_vendor,
     }

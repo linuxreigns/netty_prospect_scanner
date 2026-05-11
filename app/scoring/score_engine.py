@@ -52,7 +52,11 @@ def compute_score(data: dict) -> tuple[int, str, list[str]]:
         score += 12
         reasons.append("Usa Shopify/Magento/PrestaShop (+12)")
 
-    if data.get("looks_outdated") or ((data.get("response_time_ms") or 0) > 3000):
+    if (
+        data.get("looks_outdated")
+        or (data.get("load_speed_tier") in ("slow", "very_slow"))
+        or ((data.get("response_time_ms") or 0) > 3000)
+    ):
         score += 10
         reasons.append("Sitio lento o viejo (+10)")
 
@@ -60,9 +64,17 @@ def compute_score(data: dict) -> tuple[int, str, list[str]]:
         score += 8
         reasons.append("Tiene teléfono o email visible (+8)")
 
-    if data.get("has_facebook") or data.get("has_instagram"):
+    if (data.get("social_count") or 0) > 0 or data.get("has_facebook") or data.get("has_instagram"):
         score += 8
-        reasons.append("Tiene redes sociales (+8)")
+        reasons.append("Tiene presencia en redes sociales (+8)")
+
+    if not data.get("meta_description") or (data.get("meta_desc_length") or 0) < 50:
+        score += 5
+        reasons.append("Sin meta descripción SEO (+5)")
+
+    if data.get("has_contact_form") and not data.get("has_crm_form"):
+        score += 7
+        reasons.append("Formulario sin CRM — leads sin automatizar (+7)")
 
     rubro = (data.get("rubro") or "").strip().lower()
     if rubro in HIGH_DEMAND_SECTORS:

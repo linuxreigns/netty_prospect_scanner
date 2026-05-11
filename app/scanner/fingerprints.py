@@ -40,3 +40,20 @@ WHATSAPP_PATTERNS = ["wa.me", "api.whatsapp.com", "whatsapp://", "+507"]
 CONTACT_KEYWORDS = ["contacto", "contact", "contáctanos", "escríbenos"]
 CTA_KEYWORDS = ["comprar", "cotizar", "reservar", "agendar", "llámanos", "escríbenos", "contáctanos"]
 ECOMMERCE_HINTS = ["producto", "productos", "cart", "carrito", "checkout", "shop"]
+
+CRM_FORM_FINGERPRINTS = {
+    "HubSpot Forms": ["hs-script.com", "hsforms.net", "hubspotforms", "js.hsforms.net"],
+    "Typeform": ["typeform.com"],
+    "Google Forms": ["docs.google.com/forms"],
+    "Gravity Forms": ["gravityforms", "gform_wrapper"],
+    "Mailchimp": ["list-manage.com", "mailchimp.com/subscribe"],
+    "Pipedrive": ["pipedriveleads.com"],
+    "ActiveCampaign": ["activehosted.com"],
+}
+
+SOCIAL_PATTERNS = {
+    "tiktok": ["tiktok.com"],
+    "youtube": ["youtube.com", "youtu.be"],
+    "linkedin": ["linkedin.com"],
+    "twitter": ["twitter.com", "x.com/"],
+}
