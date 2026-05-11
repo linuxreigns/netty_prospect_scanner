@@ -37,3 +37,6 @@ ms-playwright/
 
 # Logs
 *.log
+
+# Claude Code / ruflo local helpers (copied from ~/.claude/helpers/ — not project code)
+.claude/helpers/
