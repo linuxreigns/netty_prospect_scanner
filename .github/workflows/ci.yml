@@ -53,8 +53,23 @@ jobs:
         run: |
           python -c "from app.main import app; print('app import OK')"
 
+      - name: Diagnose environment
+        run: |
+          python --version
+          pip show fastapi starlette pytest httpx 2>/dev/null | grep -E "^(Name|Version):"
+          echo "CWD: $(pwd)"
+          ls -la data/
+
       - name: Tests
         env:
           ENABLE_PLAYWRIGHT_FALLBACK: "false"
         run: |
-          pytest -v --tb=long
+          pytest -v --tb=long -p no:warnings 2>&1 | tee /tmp/pytest_output.txt
+          exit ${PIPESTATUS[0]}
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-output
+          path: /tmp/pytest_output.txt
