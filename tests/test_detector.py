@@ -73,3 +73,52 @@ def test_detect_vue_frontend():
     html = "<div id='app' data-v-abc123><script>window.__vue__ = true</script></div>"
     tech = detect_technology(html, {})
     assert tech["frontend_stack"] == "Vue.js"
+
+
+def test_schema_org_extraction():
+    html = """<html><head>
+    <script type="application/ld+json">
+    {"@type":"LocalBusiness","name":"Restaurante El Ranchito","telephone":"+507 6000-1234",
+     "email":"info@elranchito.com","address":{"streetAddress":"Calle 50, Local 3","addressLocality":"Panamá"},
+     "openingHours":"Mo-Fr 08:00-18:00","priceRange":"$$"}
+    </script></head><body><h1>El Ranchito</h1></body></html>"""
+    sig = detect_signals("https://elranchito.com", html)
+    assert "+507 6000-1234" in (sig["phone_numbers"] or "")
+    assert "info@elranchito.com" in (sig["email_addresses"] or "")
+    assert "Calle 50" in (sig["address"] or "")
+    assert sig["schema_hours"] is not None
+    assert sig["schema_price_range"] == "$$"
+    assert sig["has_schema_markup"] is True
+
+
+def test_vendor_email_filtered():
+    html = """<html><body>
+    <a href="mailto:ventas@empresa.com">Ventas</a>
+    <script>var x = 'support@starapps.studio'</script>
+    </body></html>"""
+    sig = detect_signals("https://empresa.com", html)
+    assert "ventas@empresa.com" in (sig["email_addresses"] or "")
+    assert "starapps.studio" not in (sig["email_addresses"] or "")
+
+
+def test_tiktok_url_extracted():
+    html = "<a href='https://www.tiktok.com/@mitienda'>TikTok</a>"
+    sig = detect_signals("https://mitienda.com", html)
+    assert sig.get("tiktok_url") == "https://www.tiktok.com/@mitienda"
+    assert sig["has_tiktok"] is True
+
+
+def test_phone_max_11_digits():
+    # 13-digit barcode-like number should NOT be captured
+    html = "<p>SKU: 2940000713242 — Llama al 6000-1234</p>"
+    sig = detect_signals("https://tienda.com", html)
+    assert "2940000713242" not in (sig["phone_numbers"] or "")
+
+
+def test_business_name_from_schema():
+    html = """<html><head>
+    <script type="application/ld+json">
+    {"@type":"Store","name":"Tienda Central"}
+    </script></head><body></body></html>"""
+    sig = detect_signals("https://tiendacentral.com", html)
+    assert sig["business_name"] == "Tienda Central"

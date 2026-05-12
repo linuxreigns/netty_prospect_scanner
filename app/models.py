@@ -144,6 +144,10 @@ class Prospect(Base):
 
     title: Mapped[str | None] = mapped_column(String(500), nullable=True)
     meta_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    business_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    address: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    schema_hours: Mapped[str | None] = mapped_column(Text, nullable=True)
+    schema_price_range: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     cms: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     ecommerce_platform: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)

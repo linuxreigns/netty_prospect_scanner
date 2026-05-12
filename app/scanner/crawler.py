@@ -5,7 +5,7 @@ import random
 import socket
 import time
 from dataclasses import dataclass
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -22,6 +22,9 @@ _USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15",
 ]
+
+# Sub-pages to crawl when homepage lacks contact info
+_CONTACT_SUBPAGES = ["/contacto", "/contact", "/contact-us", "/nosotros", "/about", "/ubicacion", "/donde-estamos"]
 
 
 def _get_headers() -> dict:
@@ -41,8 +44,54 @@ def _get_headers() -> dict:
 def _html_has_content(html: str) -> bool:
     """True if the page has enough visible text to be considered rendered."""
     soup = BeautifulSoup(html or "", "html.parser")
-    text = soup.get_text(" ", strip=True)
-    return len(text.split()) >= 60
+    return len(soup.get_text(" ", strip=True).split()) >= 60
+
+
+def _needs_playwright(html: str, fetched: dict) -> bool:
+    """
+    Decide whether to try Playwright. Uses multiple signals beyond word count
+    to handle Cloudflare-protected and JS-heavy sites that return large but
+    contact-empty HTML responses.
+    """
+    soup = BeautifulSoup(html or "", "html.parser")
+    words = len(soup.get_text(" ", strip=True).split())
+
+    # Always use Playwright for JS shells (empty first render)
+    if words < 60:
+        return True
+
+    html_lower = (html or "").lower()
+    resp_headers = fetched.get("headers", {})
+    server = (resp_headers.get("server") or resp_headers.get("Server") or "").lower()
+    is_cloudflare = "cloudflare" in server
+
+    title_tag = soup.find("title")
+    has_title = bool(title_tag and title_tag.get_text(strip=True))
+
+    links = [a.get("href", "") or "" for a in soup.find_all("a")]
+    has_contact_signal = any(any(k in lnk.lower() for k in ["tel:", "mailto:", "wa.me", "whatsapp"]) for lnk in links)
+    has_social = any(s in html_lower for s in ["facebook.com", "instagram.com", "wa.me", "tiktok.com"])
+
+    # Page has words but is missing key structure → likely a challenge or empty shell
+    if not has_title and words < 600:
+        return True
+
+    # Cloudflare-protected AND no useful contact signals → Playwright can bypass
+    if is_cloudflare and not has_contact_signal and not has_social:
+        return True
+
+    return False
+
+
+def _has_contact_data(sig: dict) -> bool:
+    """True if we already have useful contact info from the main page."""
+    return bool(
+        sig.get("phone_numbers")
+        or sig.get("email_addresses")
+        or sig.get("whatsapp_number")
+        or sig.get("facebook_url")
+        or sig.get("instagram_url")
+    )
 
 
 @dataclass
@@ -76,21 +125,15 @@ def is_blocked_target(url: str) -> bool:
     host = parsed.hostname
     if not host:
         return True
-
-    host_l = host.lower()
-    if host_l in {"localhost", "127.0.0.1", "::1"}:
+    if host.lower() in {"localhost", "127.0.0.1", "::1"}:
         return True
-
     try:
         infos = socket.getaddrinfo(host, None)
     except socket.gaierror:
         return False
-
     for info in infos:
-        ip = info[4][0]
-        if _is_private_or_local_ip(ip):
+        if _is_private_or_local_ip(info[4][0]):
             return True
-
     return False
 
 
@@ -133,6 +176,8 @@ def _fail_data(
         "ssl_enabled": ssl_enabled,
         "title": None,
         "meta_description": None,
+        "business_name": None,
+        "address": None,
         "cms": None,
         "ecommerce_platform": None,
         "frontend_stack": None,
@@ -190,14 +235,12 @@ async def _fetch_with_fallbacks(url: str, headers: dict, timeout: httpx.Timeout)
     err = result.get("error", "")
     err_type = result.get("error_type", "")
 
-    # SSL error → retry without verification
     if "ssl" in err.lower() or "certificate" in err.lower() or "ConnectError" in err_type:
         result2 = await _fetch(url, headers, timeout, verify=False)
         if result2["ok"]:
             result2["ssl_bypass"] = True
             return result2
 
-    # HTTPS failed → try HTTP
     if url.startswith("https://"):
         http_url = "http://" + url[8:]
         result3 = await _fetch(http_url, headers, timeout, verify=True)
@@ -206,6 +249,60 @@ async def _fetch_with_fallbacks(url: str, headers: dict, timeout: httpx.Timeout)
             return result3
 
     return result
+
+
+def _merge_contact_signals(base: dict, extra: dict) -> None:
+    """Fill missing contact fields in base dict from extra (sub-page signals)."""
+    for field in [
+        "phone_numbers",
+        "email_addresses",
+        "whatsapp_number",
+        "facebook_url",
+        "instagram_url",
+        "tiktok_url",
+        "youtube_url",
+        "linkedin_url",
+        "twitter_url",
+        "address",
+        "business_name",
+        "schema_hours",
+        "schema_price_range",
+    ]:
+        if not base.get(field) and extra.get(field):
+            base[field] = extra[field]
+    # Update booleans
+    for field in [
+        "has_phone",
+        "has_email",
+        "has_whatsapp",
+        "has_facebook",
+        "has_instagram",
+        "has_contact_form",
+        "has_schema_markup",
+    ]:
+        if extra.get(field):
+            base[field] = True
+    if extra.get("social_count", 0) > base.get("social_count", 0):
+        base["social_count"] = extra["social_count"]
+
+
+async def _enrich_from_subpages(base_url: str, headers: dict, timeout: httpx.Timeout) -> dict:
+    """
+    Try known contact sub-pages to extract missing contact data.
+    Returns merged signals from the first sub-page that yields contact info.
+    """
+    for path in _CONTACT_SUBPAGES:
+        sub_url = urljoin(base_url, path)
+        fetched = await _fetch(sub_url, headers, timeout)
+        if not fetched.get("ok") or fetched.get("status", 0) not in (200, 301, 302):
+            continue
+        html = fetched.get("html", "")
+        if not html or len(html.strip()) < 200:
+            continue
+        sig = detect_signals(url=sub_url, html=html)
+        if _has_contact_data(sig):
+            return sig
+    return {}
 
 
 async def scan_one(item: ScanInput, semaphore: asyncio.Semaphore) -> dict:
@@ -242,14 +339,20 @@ async def scan_one(item: ScanInput, semaphore: asyncio.Semaphore) -> dict:
 
         html = fetched.get("html", "")
 
-        # Playwright fallback: trigger when visible text is insufficient (JS shell)
-        if settings.enable_playwright_fallback and not _html_has_content(html):
+        # Smart Playwright trigger: word count + Cloudflare + missing structure
+        if settings.enable_playwright_fallback and _needs_playwright(html, fetched):
             pw = await asyncio.to_thread(fetch_rendered_html, url, settings.playwright_timeout_ms)
             if pw.get("ok") and pw.get("html") and _html_has_content(pw["html"]):
                 html = pw["html"]
 
         tech = detect_technology(html=html, headers=fetched.get("headers", {}), cookies=fetched.get("cookies", ""))
         sig = detect_signals(url=url, html=html)
+
+        # Sub-page enrichment: if homepage lacks contact data, crawl /contacto etc.
+        if not _has_contact_data(sig):
+            extra = await _enrich_from_subpages(url, headers, timeout)
+            if extra:
+                _merge_contact_signals(sig, extra)
 
         elapsed_ms = fetched.get("elapsed_ms") or 0
         if elapsed_ms < 1000:
