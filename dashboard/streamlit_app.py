@@ -294,7 +294,25 @@ if sin_run_horas > 0:
 prospects = requests.get(f"{API_BASE}/dashboard/prospects", params=params, timeout=20).json()
 df = pd.DataFrame(prospects)
 if not df.empty and "netty_fit_score" in df.columns:
-    st.dataframe(df.sort_values("netty_fit_score", ascending=False), use_container_width=True)
+    df_sorted = df.sort_values("netty_fit_score", ascending=False)
+    # Priority columns for sales action
+    contact_cols = [
+        "domain",
+        "fit_classification",
+        "netty_fit_score",
+        "phone_numbers",
+        "email_addresses",
+        "whatsapp_number",
+        "facebook_url",
+        "instagram_url",
+        "linkedin_url",
+        "cms",
+        "has_chatbot",
+        "rubro",
+    ]
+    display_cols = [c for c in contact_cols if c in df_sorted.columns]
+    remaining = [c for c in df_sorted.columns if c not in display_cols]
+    st.dataframe(df_sorted[display_cols + remaining], use_container_width=True)
 else:
     st.info("Sin resultados con los filtros actuales")
 

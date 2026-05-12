@@ -1,6 +1,6 @@
 # Netty Prospect Scanner (MVP)
 
-![CI](https://github.com/linuxreigns/netty_prospect_scanner/actions/workflows/ci.yml/badge.svg)
+[![CI](https://github.com/linuxreigns/netty_prospect_scanner/actions/workflows/ci.yml/badge.svg)](https://github.com/linuxreigns/netty_prospect_scanner/actions/workflows/ci.yml)
 
 Herramienta interna para prospectar negocios en Panamá, detectar stack tecnológico y priorizar leads B2B para Netty.
 

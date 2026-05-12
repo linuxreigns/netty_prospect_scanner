@@ -157,6 +157,16 @@ class Prospect(Base):
     has_phone: Mapped[bool] = mapped_column(Boolean, default=False)
     has_facebook: Mapped[bool] = mapped_column(Boolean, default=False)
     has_instagram: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Extracted contact data
+    phone_numbers: Mapped[str | None] = mapped_column(Text, nullable=True)
+    email_addresses: Mapped[str | None] = mapped_column(Text, nullable=True)
+    whatsapp_number: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    facebook_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    instagram_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    linkedin_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    twitter_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    youtube_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     has_contact_page: Mapped[bool] = mapped_column(Boolean, default=False)
     has_products_or_cart: Mapped[bool] = mapped_column(Boolean, default=False)
     looks_outdated: Mapped[bool] = mapped_column(Boolean, default=False)

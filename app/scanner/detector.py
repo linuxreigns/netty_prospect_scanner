@@ -51,9 +51,77 @@ def detect_technology(html: str, headers: dict, cookies: str = "") -> dict:
     return {"cms": cms, "ecommerce_platform": ecommerce, "frontend_stack": frontend}
 
 
+_PHONE_RE = re.compile(r"(?<!\d)" r"(\+?507[\s.\-]?)?" r"(\(507\)[\s.\-]?)?" r"(\d{3,4}[\s.\-]?\d{4})" r"(?!\d)")
+_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+_WA_RE = re.compile(r"(?:wa\.me|api\.whatsapp\.com/send\?phone=|whatsapp://send\?phone=)[/=]?(\d{7,15})")
+_SOCIAL_URL_RE = {
+    "facebook_url": re.compile(
+        r"https?://(?:www\.)?facebook\.com/"
+        r"(?!sharer|share|dialog|plugins|login|help|groups|events|pages/create|tr/?$|2008|photo|video|watch|story)"
+        r"([A-Za-z0-9][A-Za-z0-9._\-]{2,})"
+    ),
+    "instagram_url": re.compile(r"https?://(?:www\.)?instagram\.com/([A-Za-z0-9._]{2,})/?(?!\bexplore\b|\bp\b|\btv\b)"),
+    "linkedin_url": re.compile(r"https?://(?:www\.)?linkedin\.com/(?:company|in)/([A-Za-z0-9._\-]{2,})/?"),
+    "twitter_url": re.compile(r"https?://(?:www\.)?(?:twitter|x)\.com/([A-Za-z0-9_]{2,})/?"),
+    "youtube_url": re.compile(r"https?://(?:www\.)?youtube\.com/(?:channel/|c/|user/|@)([A-Za-z0-9_.\-]{2,})/?"),
+}
+
+
+def _extract_phones(text: str) -> str:
+    hits = []
+    seen = set()
+    for m in _PHONE_RE.finditer(text):
+        raw = m.group(0).strip()
+        digits = re.sub(r"\D", "", raw)
+        if digits not in seen and 7 <= len(digits) <= 15:
+            seen.add(digits)
+            hits.append(raw)
+        if len(hits) >= 5:
+            break
+    return ", ".join(hits)
+
+
+def _extract_emails(html: str) -> str:
+    SKIP = {"png", "jpg", "gif", "svg", "css", "js", "webp", "woff"}
+    hits = []
+    seen: set[str] = set()
+    for m in _EMAIL_RE.finditer(html):
+        addr = m.group(0).lower()
+        ext = addr.rsplit(".", 1)[-1]
+        if ext in SKIP or addr in seen:
+            continue
+        seen.add(addr)
+        hits.append(addr)
+        if len(hits) >= 5:
+            break
+    return ", ".join(hits)
+
+
+def _extract_whatsapp(links: list[str], html: str) -> str:
+    for lnk in links:
+        if lnk and any(p in lnk.lower() for p in ["wa.me", "api.whatsapp", "whatsapp.com/send"]):
+            m = _WA_RE.search(lnk)
+            if m:
+                return f"+{m.group(1)}"
+    m = _WA_RE.search(html)
+    if m:
+        return f"+{m.group(1)}"
+    return ""
+
+
+def _extract_social_urls(html: str) -> dict[str, str]:
+    results: dict[str, str] = {}
+    for key, pattern in _SOCIAL_URL_RE.items():
+        m = pattern.search(html)
+        if m:
+            results[key] = m.group(0)
+    return results
+
+
 def detect_signals(url: str, html: str) -> dict:
     soup = BeautifulSoup(html or "", "html.parser")
     text = soup.get_text(" ", strip=True).lower()
+    raw_text = soup.get_text(" ", strip=True)
     links = [a.get("href", "") for a in soup.find_all("a")]
     scripts_text = " ".join((s.get("src", "") or "") + " " + (s.text or "") for s in soup.find_all("script"))
 
@@ -67,14 +135,18 @@ def detect_signals(url: str, html: str) -> dict:
     )
     has_form = soup.find("form") is not None
 
-    email_regex = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
-    phone_regex = re.compile(r"(\+?507[\s-]?)?(\d{4}[\s-]?\d{4})")
-    has_email = bool(email_regex.search(html or ""))
-    has_phone = bool(phone_regex.search(text))
+    email_addresses = _extract_emails(html or "")
+    phone_numbers = _extract_phones(raw_text)
+    whatsapp_number = _extract_whatsapp(links, html or "")
+
+    has_email = bool(email_addresses)
+    has_phone = bool(phone_numbers)
 
     html_lower = (html or "").lower()
     has_facebook = "facebook.com" in html_lower
     has_instagram = "instagram.com" in html_lower
+
+    social_urls = _extract_social_urls(html or "")
 
     has_contact_page = any(any(k in (lnk or "").lower() for k in CONTACT_KEYWORDS) for lnk in links)
     has_products_or_cart = _contains_any(text, ECOMMERCE_HINTS) or _contains_any(
@@ -96,8 +168,7 @@ def detect_signals(url: str, html: str) -> dict:
     # SEO signals
     title_length = len(title) if title else 0
     meta_desc_length = len(meta_description) if meta_description else 0
-    h1_tags = soup.find_all("h1")
-    has_h1 = len(h1_tags) > 0
+    has_h1 = bool(soup.find_all("h1"))
     has_og_tags = bool(soup.find("meta", property=re.compile(r"^og:")))
     has_schema_markup = '"@context"' in (html or "") and "schema.org" in html_lower
 
@@ -135,6 +206,11 @@ def detect_signals(url: str, html: str) -> dict:
         "has_products_or_cart": has_products_or_cart,
         "looks_outdated": looks_outdated,
         "has_clear_cta": has_clear_cta,
+        # Extracted contact data
+        "phone_numbers": phone_numbers or None,
+        "email_addresses": email_addresses or None,
+        "whatsapp_number": whatsapp_number or None,
+        **{k: v for k, v in social_urls.items()},
         # SEO
         "title_length": title_length,
         "meta_desc_length": meta_desc_length,

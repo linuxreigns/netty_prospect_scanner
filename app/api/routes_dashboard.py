@@ -120,6 +120,15 @@ def list_prospects(
                 "fit_classification": p.fit_classification,
                 "http_code": p.http_code,
                 "response_time_ms": p.response_time_ms,
+                # Extracted contact data
+                "phone_numbers": p.phone_numbers,
+                "email_addresses": p.email_addresses,
+                "whatsapp_number": p.whatsapp_number,
+                "facebook_url": p.facebook_url,
+                "instagram_url": p.instagram_url,
+                "linkedin_url": p.linkedin_url,
+                "twitter_url": p.twitter_url,
+                "youtube_url": p.youtube_url,
                 "latest_agent_run_id": latest_run_id,
                 "latest_agent_run_at": latest_run_at,
             }
@@ -281,6 +290,12 @@ def sales_queue(limit: int = 50, min_score: int = 60, stale_hours: int = 24, db:
                 "classification": p.fit_classification,
                 "has_whatsapp": p.has_whatsapp,
                 "has_chatbot": p.has_chatbot,
+                "phone_numbers": p.phone_numbers,
+                "email_addresses": p.email_addresses,
+                "whatsapp_number": p.whatsapp_number,
+                "facebook_url": p.facebook_url,
+                "instagram_url": p.instagram_url,
+                "linkedin_url": p.linkedin_url,
                 "latest_agent_run_id": latest.id if latest else None,
                 "latest_agent_run_at": latest.created_at.isoformat() if latest and latest.created_at else None,
             }
