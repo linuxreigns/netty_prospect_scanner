@@ -171,6 +171,7 @@ class Prospect(Base):
     has_products_or_cart: Mapped[bool] = mapped_column(Boolean, default=False)
     looks_outdated: Mapped[bool] = mapped_column(Boolean, default=False)
     has_clear_cta: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_parked: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
     netty_fit_score: Mapped[int] = mapped_column(Integer, default=0, index=True)
     fit_classification: Mapped[str] = mapped_column(String(20), default="Bajo", index=True)

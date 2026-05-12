@@ -1,18 +1,48 @@
 import asyncio
 import csv
 import ipaddress
+import random
 import socket
 import time
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
 import httpx
+from bs4 import BeautifulSoup
 
 from app.config import settings
 from app.scanner.detector import detect_signals, detect_technology
 from app.scanner.playwright_fallback import fetch_rendered_html
 from app.scanner.robots import can_fetch
 from app.scoring.score_engine import compute_score
+
+_USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15",
+]
+
+
+def _get_headers() -> dict:
+    return {
+        "User-Agent": random.choice(_USER_AGENTS),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "es-PA,es;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+    }
+
+
+def _html_has_content(html: str) -> bool:
+    """True if the page has enough visible text to be considered rendered."""
+    soup = BeautifulSoup(html or "", "html.parser")
+    text = soup.get_text(" ", strip=True)
+    return len(text.split()) >= 60
 
 
 @dataclass
@@ -83,9 +113,13 @@ def load_csv_urls(path: str) -> list[ScanInput]:
 
 
 def _fail_data(
-    url: str, domain: str, item: ScanInput, ssl_enabled: bool, fail_reason: str, elapsed_ms: float | None = None
+    url: str,
+    domain: str,
+    item: ScanInput,
+    ssl_enabled: bool,
+    fail_reason: str,
+    elapsed_ms: float | None = None,
 ) -> dict:
-    """Return a minimal failed-scan data dict with score applied."""
     data: dict = {
         "url": url,
         "domain": domain,
@@ -114,6 +148,7 @@ def _fail_data(
         "has_products_or_cart": False,
         "looks_outdated": False,
         "has_clear_cta": False,
+        "is_parked": False,
     }
     score, cls, reasons = compute_score(data)
     data.update(
@@ -162,7 +197,7 @@ async def _fetch_with_fallbacks(url: str, headers: dict, timeout: httpx.Timeout)
             result2["ssl_bypass"] = True
             return result2
 
-    # HTTPS failed → try HTTP (only if original was https)
+    # HTTPS failed → try HTTP
     if url.startswith("https://"):
         http_url = "http://" + url[8:]
         result3 = await _fetch(http_url, headers, timeout, verify=True)
@@ -170,7 +205,7 @@ async def _fetch_with_fallbacks(url: str, headers: dict, timeout: httpx.Timeout)
             result3["http_fallback"] = True
             return result3
 
-    return result  # all fallbacks failed, return original error
+    return result
 
 
 async def scan_one(item: ScanInput, semaphore: asyncio.Semaphore) -> dict:
@@ -187,7 +222,7 @@ async def scan_one(item: ScanInput, semaphore: asyncio.Semaphore) -> dict:
         if settings.respect_robots_txt and not can_fetch(url, settings.user_agent):
             return _fail_data(url, domain, item, ssl_enabled, "robots_disallowed")
 
-        headers = {"User-Agent": settings.user_agent}
+        headers = _get_headers()
         timeout = httpx.Timeout(settings.request_timeout_seconds)
         fetched = await _fetch_with_fallbacks(url, headers, timeout)
 
@@ -207,10 +242,10 @@ async def scan_one(item: ScanInput, semaphore: asyncio.Semaphore) -> dict:
 
         html = fetched.get("html", "")
 
-        # Playwright fallback for JS-heavy sites
-        if settings.enable_playwright_fallback and len((html or "").strip()) < 1000:
-            pw = fetch_rendered_html(url, timeout_ms=settings.playwright_timeout_ms)
-            if pw.get("ok") and pw.get("html"):
+        # Playwright fallback: trigger when visible text is insufficient (JS shell)
+        if settings.enable_playwright_fallback and not _html_has_content(html):
+            pw = await asyncio.to_thread(fetch_rendered_html, url, settings.playwright_timeout_ms)
+            if pw.get("ok") and pw.get("html") and _html_has_content(pw["html"]):
                 html = pw["html"]
 
         tech = detect_technology(html=html, headers=fetched.get("headers", {}), cookies=fetched.get("cookies", ""))

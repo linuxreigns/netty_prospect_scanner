@@ -11,6 +11,7 @@ from .fingerprints import (
     ECOMMERCE_FINGERPRINTS,
     ECOMMERCE_HINTS,
     FRONTEND_FINGERPRINTS,
+    PARKED_PATTERNS,
     SOCIAL_PATTERNS,
     WHATSAPP_PATTERNS,
 )
@@ -51,9 +52,18 @@ def detect_technology(html: str, headers: dict, cookies: str = "") -> dict:
     return {"cms": cms, "ecommerce_platform": ecommerce, "frontend_stack": frontend}
 
 
+# --- Phone extraction ---
 _PHONE_RE = re.compile(r"(?<!\d)" r"(\+?507[\s.\-]?)?" r"(\(507\)[\s.\-]?)?" r"(\d{3,4}[\s.\-]?\d{4})" r"(?!\d)")
+_TEL_HREF_RE = re.compile(r"tel:[\s]*([+\d\s\-().]{7,20})")
+
+# --- Email extraction ---
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+_EMAIL_SKIP_EXT = {"png", "jpg", "gif", "svg", "css", "js", "webp", "woff", "woff2", "ttf", "eot"}
+
+# --- WhatsApp extraction ---
 _WA_RE = re.compile(r"(?:wa\.me|api\.whatsapp\.com/send\?phone=|whatsapp://send\?phone=)[/=]?(\d{7,15})")
+
+# --- Social URL extraction ---
 _SOCIAL_URL_RE = {
     "facebook_url": re.compile(
         r"https?://(?:www\.)?facebook\.com/"
@@ -67,34 +77,61 @@ _SOCIAL_URL_RE = {
 }
 
 
-def _extract_phones(text: str) -> str:
-    hits = []
-    seen = set()
-    for m in _PHONE_RE.finditer(text):
-        raw = m.group(0).strip()
-        digits = re.sub(r"\D", "", raw)
-        if digits not in seen and 7 <= len(digits) <= 15:
-            seen.add(digits)
-            hits.append(raw)
-        if len(hits) >= 5:
-            break
-    return ", ".join(hits)
-
-
-def _extract_emails(html: str) -> str:
-    SKIP = {"png", "jpg", "gif", "svg", "css", "js", "webp", "woff"}
-    hits = []
+def _extract_phones(links: list[str], raw_text: str) -> str:
+    """Extract phones: prefer tel: hrefs (reliable), then regex on visible text."""
     seen: set[str] = set()
-    for m in _EMAIL_RE.finditer(html):
-        addr = m.group(0).lower()
-        ext = addr.rsplit(".", 1)[-1]
-        if ext in SKIP or addr in seen:
-            continue
-        seen.add(addr)
-        hits.append(addr)
-        if len(hits) >= 5:
-            break
-    return ", ".join(hits)
+    hits: list[str] = []
+
+    # 1. tel: links (most reliable)
+    for href in links:
+        if href and href.lower().startswith("tel:"):
+            m = _TEL_HREF_RE.search(href.lower())
+            if m:
+                digits = re.sub(r"\D", "", m.group(1))
+                if digits not in seen and 7 <= len(digits) <= 15:
+                    seen.add(digits)
+                    hits.append(m.group(1).strip())
+
+    # 2. regex on visible text as fallback
+    if not hits:
+        for m in _PHONE_RE.finditer(raw_text):
+            raw = m.group(0).strip()
+            digits = re.sub(r"\D", "", raw)
+            if digits not in seen and 7 <= len(digits) <= 15:
+                seen.add(digits)
+                hits.append(raw)
+            if len(hits) >= 5:
+                break
+
+    return ", ".join(hits[:5])
+
+
+def _extract_emails(links: list[str], html: str) -> str:
+    """Extract emails: prefer mailto: hrefs (reliable), then regex on HTML."""
+    seen: set[str] = set()
+    hits: list[str] = []
+
+    # 1. mailto: links (most reliable)
+    for href in links:
+        if href and href.lower().startswith("mailto:"):
+            addr = href[7:].split("?")[0].strip().lower()
+            ext = addr.rsplit(".", 1)[-1] if "." in addr else ""
+            if ext not in _EMAIL_SKIP_EXT and _EMAIL_RE.match(addr) and addr not in seen:
+                seen.add(addr)
+                hits.append(addr)
+
+    # 2. regex on HTML as fallback
+    if not hits:
+        for m in _EMAIL_RE.finditer(html):
+            addr = m.group(0).lower()
+            ext = addr.rsplit(".", 1)[-1]
+            if ext not in _EMAIL_SKIP_EXT and addr not in seen:
+                seen.add(addr)
+                hits.append(addr)
+            if len(hits) >= 5:
+                break
+
+    return ", ".join(hits[:5])
 
 
 def _extract_whatsapp(links: list[str], html: str) -> str:
@@ -118,11 +155,16 @@ def _extract_social_urls(html: str) -> dict[str, str]:
     return results
 
 
+def _is_parked(title: str | None, text: str) -> bool:
+    blob = f"{title or ''} {text[:500]}".lower()
+    return any(p in blob for p in PARKED_PATTERNS)
+
+
 def detect_signals(url: str, html: str) -> dict:
     soup = BeautifulSoup(html or "", "html.parser")
     text = soup.get_text(" ", strip=True).lower()
     raw_text = soup.get_text(" ", strip=True)
-    links = [a.get("href", "") for a in soup.find_all("a")]
+    links = [a.get("href", "") or "" for a in soup.find_all("a")]
     scripts_text = " ".join((s.get("src", "") or "") + " " + (s.text or "") for s in soup.find_all("script"))
 
     title_tag = soup.find("title")
@@ -133,10 +175,11 @@ def detect_signals(url: str, html: str) -> dict:
     has_whatsapp = any(any(p in (lnk or "").lower() for p in WHATSAPP_PATTERNS) for lnk in links) or _contains_any(
         text, WHATSAPP_PATTERNS
     )
+
     has_form = soup.find("form") is not None
 
-    email_addresses = _extract_emails(html or "")
-    phone_numbers = _extract_phones(raw_text)
+    phone_numbers = _extract_phones(links, raw_text)
+    email_addresses = _extract_emails(links, html or "")
     whatsapp_number = _extract_whatsapp(links, html or "")
 
     has_email = bool(email_addresses)
@@ -148,7 +191,7 @@ def detect_signals(url: str, html: str) -> dict:
 
     social_urls = _extract_social_urls(html or "")
 
-    has_contact_page = any(any(k in (lnk or "").lower() for k in CONTACT_KEYWORDS) for lnk in links)
+    has_contact_page = any(any(k in lnk.lower() for k in CONTACT_KEYWORDS) for lnk in links)
     has_products_or_cart = _contains_any(text, ECOMMERCE_HINTS) or _contains_any(
         " ".join(links).lower(), ECOMMERCE_HINTS
     )
@@ -172,7 +215,7 @@ def detect_signals(url: str, html: str) -> dict:
     has_og_tags = bool(soup.find("meta", property=re.compile(r"^og:")))
     has_schema_markup = '"@context"' in (html or "") and "schema.org" in html_lower
 
-    # Additional social networks
+    # Social networks
     social_hits: dict[str, bool] = {}
     for net, patterns in SOCIAL_PATTERNS.items():
         social_hits[net] = any(p in html_lower for p in patterns)
@@ -182,7 +225,7 @@ def detect_signals(url: str, html: str) -> dict:
     has_twitter = social_hits.get("twitter", False)
     social_count = sum([has_facebook, has_instagram, has_tiktok, has_youtube, has_linkedin, has_twitter])
 
-    # CRM-integrated forms
+    # CRM forms
     crm_form_vendor = None
     has_crm_form = False
     for vendor, patterns in CRM_FORM_FINGERPRINTS.items():
@@ -191,9 +234,12 @@ def detect_signals(url: str, html: str) -> dict:
             has_crm_form = True
             break
 
+    is_parked = _is_parked(title, text)
+
     return {
         "title": title,
         "meta_description": meta_description,
+        "is_parked": is_parked,
         "has_chatbot": has_chatbot,
         "chatbot_vendor": chatbot_vendor,
         "has_whatsapp": has_whatsapp,
